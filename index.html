@@ -383,29 +383,42 @@
         };
         
         const MessageCacheService = {
+            memoryCache: new Map(), 
+
             async saveMessage(msgId, ciphertext, decryptedText, fileData) {
+                const payload = { id: msgId, ciphertext: ciphertext, text: decryptedText, fileData: fileData };
+                
+                this.memoryCache.set(msgId, payload); 
+                
                 try {
                     const db = await KeyManager.initDB();
                     return new Promise((res, rej) => {
                         const req = db.transaction(["decrypted_messages"], "readwrite")
                                     .objectStore("decrypted_messages")
-                                    .put({ 
-                                        id: msgId, 
-                                        ciphertext: ciphertext, 
-                                        text: decryptedText, 
-                                        fileData: fileData 
-                                    });
+                                    .put(payload);
                         req.onsuccess = () => res(); req.onerror = e => rej(e);
                     });
                 } catch(e) { console.warn("Cache save failed", e); }
             },
+
             async getMessage(msgId) {
+                if (this.memoryCache.has(msgId)) {
+                    return this.memoryCache.get(msgId);
+                }
+                
                 try {
                     const db = await KeyManager.initDB();
                     return new Promise((res, rej) => {
                         const req = db.transaction(["decrypted_messages"], "readonly")
                                       .objectStore("decrypted_messages").get(msgId);
-                        req.onsuccess = e => res(e.target.result); req.onerror = e => rej(e);
+                        req.onsuccess = e => {
+                            const result = e.target.result;
+                            if (result) {
+                                this.memoryCache.set(msgId, result); 
+                            }
+                            res(result);
+                        };
+                        req.onerror = e => rej(e);
                     });
                 } catch(e) { return null; }
             }
@@ -816,6 +829,8 @@
                     const now = Date.now();
                     let pinnedMsgFound = false;
                     let hasNewIncomingMessage = false;
+                    const missingFromDOM = messages.filter(m => !document.getElementById(`msg-bubble-${m.id}`));
+                    await Promise.all(missingFromDOM.map(m => MessageCacheService.getMessage(m.id)));
                     const processedIds = new Set();
                     let processedCount = 0;
                     let previousWrapper = null;
