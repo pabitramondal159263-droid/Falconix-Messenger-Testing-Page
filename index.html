@@ -592,7 +592,7 @@
             unsubscribeUsers: null, unsubscribeMessages: null, unsubscribeConv: null, unsubscribeMe: null, unsubscribeAllConv: null,
             replyToMsg: null, editingMsgId: null, disappearingTimerMs: 0, pinnedMsgId: null, forwardingMsg: null,
             chatInitialLoad: false, currentUnreadCount: 0,
-            messageLimit: 50, isFetchingMore: false
+            messageLimit: 200, isFetchingMore: false
         };
 
         const DataService = {
@@ -960,16 +960,20 @@
                         
                         if (AppState.currentUnreadCount > 0) {
                             const allBubblesArray = Array.from(list.querySelectorAll('.msg-bubble-wrapper'));
-                            const unreadMsgs = allBubblesArray.slice(-AppState.currentUnreadCount);
+                            const unreadMsgs = allBubblesArray.slice(Math.max(0, allBubblesArray.length - AppState.currentUnreadCount));
                             
                             if (unreadMsgs.length > 0) {
                                 const separator = document.createElement('div');
                                 separator.id = 'new-messages-separator';
-                                separator.className = 'flex justify-center my-6 w-full shrink-0 z-10';
+                                separator.className = 'flex justify-center my-6 w-full shrink-0 z-10 transition-opacity duration-300';
                                 separator.innerHTML = `<span class="px-4 py-1.5 bg-falconix-primary/10 border border-falconix-primary/30 rounded-full text-[11px] text-falconix-primary font-bold tracking-widest uppercase shadow-sm backdrop-blur-md">↓ ${AppState.currentUnreadCount} New Messages ↓</span>`;
                                 list.insertBefore(separator, unreadMsgs[0]);
                                 
-                                separator.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                setTimeout(() => {
+                                    separator.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }, 150);
+                            } else {
+                                list.scrollTop = list.scrollHeight;
                             }
                         } else {
                             list.scrollTop = list.scrollHeight;
@@ -1326,8 +1330,16 @@
 
             selectUser(user) {
                 AppState.selectedUser = user;
-                AppState.messageLimit = 50;
                 AppState.isFetchingMore = false;
+                
+                const convId = Helpers.getConversationId(AppState.currentUser.uid, user.uid);
+                const convData = AppState.conversations[convId];
+                const unreadCount = convData ? (convData[`unread_${AppState.currentUser.uid}`] || 0) : 0;
+                
+                AppState.currentUnreadCount = unreadCount;
+                
+                AppState.messageLimit = Math.max(200, unreadCount + 100);
+
                 document.getElementById('chat-placeholder').classList.add('hidden');
                 document.getElementById('chat-active').classList.remove('hidden');
                 document.getElementById('chat-active').classList.add('flex');
@@ -1340,12 +1352,9 @@
                     }).catch(err => { console.warn("Could not increment profile views", err); });
                 }
                 
-                const convId = Helpers.getConversationId(AppState.currentUser.uid, user.uid);
                 WallpaperService.apply(convId);
                 
-
                 AppState.chatInitialLoad = true;
-                AppState.currentUnreadCount = 0;
 
                 document.getElementById('chat-message-list').innerHTML = `<div id="loading-spinner" class="flex items-center justify-center h-full"><div class="animate-pulse flex flex-col items-center"><div class="w-8 h-8 border-4 border-falconix-primary border-t-transparent rounded-full animate-spin mb-4"></div><p class="text-sm text-gray-400">Decrypting secure channel...</p></div></div>`;
 
@@ -1359,7 +1368,7 @@
                         
                         if (data && data[`unread_${AppState.currentUser.uid}`] > 0) {
                             if(AppState.chatInitialLoad) {
-                                AppState.currentUnreadCount = data[`unread_${AppState.currentUser.uid}`];
+                                AppState.currentUnreadCount = Math.max(AppState.currentUnreadCount, data[`unread_${AppState.currentUser.uid}`]);
                             }
                             updateDoc(doc(db, FIREBASE_PATHS.CONVERSATIONS, convId), { [`unread_${AppState.currentUser.uid}`]: 0 }).catch(()=>{});
                         }
@@ -1387,7 +1396,7 @@
 
                         list.scrollTop += 32;
 
-                        AppState.messageLimit += 50;
+                        AppState.messageLimit += 200;
                         
                         DataService.startMessageListener(db, convId, AppState.messageLimit, (newMessages) => {
                             ChatService.handleMessagesSnapshot(newMessages).then(() => {
@@ -1408,7 +1417,6 @@
                     }
                 };
             },
-
             scrollToMessage(msgId) {
                 const el = document.getElementById(`msg-bubble-${msgId}`);
                 if(el) {
@@ -2043,6 +2051,8 @@
                 
                 if (AppState.editingMsgId) await ChatService.editMessage(text, AppState.editingMsgId, AppState.selectedUser);
                 else await ChatService.sendMessage(text, AppState.selectedUser);
+                
+                UI.clearUnreadSeparator();
                 
                 UI.clearInputBanners(); btnSend.disabled = false; chatInput.focus();
             };
