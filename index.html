@@ -815,7 +815,7 @@
                     const convId = AppState.selectedUser ? Helpers.getConversationId(AppState.currentUser.uid, AppState.selectedUser.uid) : null;
                     const now = Date.now();
                     let pinnedMsgFound = false;
-
+                    let hasNewIncomingMessage = false;
                     const processedIds = new Set();
                     let processedCount = 0;
                     let previousWrapper = null;
@@ -826,6 +826,9 @@
 
                         try {
                             const existingWrapper = document.getElementById(`msg-bubble-${msg.id}`);
+                            if (!existingWrapper && msg.senderUid !== AppState.currentUser.uid) {
+                                hasNewIncomingMessage = true;
+                            }
                             const isEditedNow = !!msg.isEdited;
                             const wasEditedBefore = existingWrapper ? existingWrapper.getAttribute('data-raw-edited') === 'true' : false;
 
@@ -968,7 +971,7 @@
                         list.scrollTop = previousScrollTop + heightDifference - 32;
                         resolve();
 
-                    } else {
+                        } else {
                         const isNearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 250;
                         
                         if (isNearBottom || AppState.justSentMessage) {
@@ -977,11 +980,9 @@
                             
                             const fab = document.getElementById('new-message-fab');
                             if(fab) { fab.classList.add('hidden'); fab.classList.remove('flex', 'animate-slide-up'); }
-                        } else {
-                            if (list.scrollHeight > previousScrollHeight) {
-                                const fab = document.getElementById('new-message-fab');
-                                if(fab) { fab.classList.remove('hidden'); fab.classList.add('flex', 'animate-slide-up'); }
-                            }
+                        } else if (hasNewIncomingMessage) {
+                            const fab = document.getElementById('new-message-fab');
+                            if(fab) { fab.classList.remove('hidden'); fab.classList.add('flex', 'animate-slide-up'); }
                         }
                         resolve();
                     }
