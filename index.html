@@ -829,8 +829,10 @@
                     const now = Date.now();
                     let pinnedMsgFound = false;
                     let hasNewIncomingMessage = false;
+                    
                     const missingFromDOM = messages.filter(m => !document.getElementById(`msg-bubble-${m.id}`));
                     await Promise.all(missingFromDOM.map(m => MessageCacheService.getMessage(m.id)));
+                    
                     const processedIds = new Set();
                     let processedCount = 0;
                     let previousWrapper = null;
@@ -990,8 +992,8 @@
                         list.scrollTop = previousScrollTop + heightDifference - 32;
                         resolve();
 
-                        } else {
-                        const isNearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 250;
+                    } else {
+                        const isNearBottom = previousScrollHeight - previousScrollTop - list.clientHeight < 250;
                         
                         if (isNearBottom || AppState.justSentMessage) {
                             list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
@@ -1385,7 +1387,7 @@
                 list.onscroll = () => {
                     const currentMessageCount = list.querySelectorAll('.msg-bubble-wrapper').length;
                     
-                    if (list.scrollTop <= 5 && !AppState.isFetchingMore && currentMessageCount >= AppState.messageLimit) {
+                    if (list.scrollTop <= 50 && !AppState.isFetchingMore && currentMessageCount >= AppState.messageLimit) {
                         AppState.isFetchingMore = true;
                         
                         const loader = document.createElement('div');
@@ -1396,7 +1398,7 @@
 
                         list.scrollTop += 32;
 
-                        AppState.messageLimit += 200;
+                        AppState.messageLimit += 100;
                         
                         DataService.startMessageListener(db, convId, AppState.messageLimit, (newMessages) => {
                             ChatService.handleMessagesSnapshot(newMessages).then(() => {
@@ -2057,7 +2059,16 @@
                 UI.clearInputBanners(); btnSend.disabled = false; chatInput.focus();
             };
 
-            btnSend?.addEventListener('click', handleSend);
+            const triggerSend = (e) => {
+                if (e.cancelable) e.preventDefault(); 
+                
+                if (!btnSend.disabled) {
+                    handleSend();
+                }
+            };
+            
+            btnSend?.addEventListener('touchstart', triggerSend, { passive: false });
+            btnSend?.addEventListener('mousedown', triggerSend);
             document.getElementById('new-message-fab')?.addEventListener('click', () => {
                 const list = document.getElementById('chat-message-list');
                 if (list) {
