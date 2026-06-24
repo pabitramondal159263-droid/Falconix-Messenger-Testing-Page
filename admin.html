@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Operations | Falconix Messenger</title>
+    <link rel="icon" type="image/png" href="https://i.ibb.co/7Nz80xdL/Falconix-Digital-Logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #080a14;
+            color: #f8fafc;
+        }
+        .glass {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, getDocs, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Your Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyCtZS3YscLwQ042gQsib8gCatIE5wLs808",
+            authDomain: "falconixmessenger.firebaseapp.com",
+            projectId: "falconixmessenger",
+            storageBucket: "falconixmessenger.firebasestorage.app",
+            messagingSenderId: "755383964666",
+            appId: "1:755383964666:web:146a0402a31da87c9f0a43"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const APP_ID = 'falconix-messenger-v1';
+        const ADMIN_EMAIL = 'pabitramondal2635@gmail.com';
+
+        const UI = {
+            showLogin() {
+                document.getElementById('admin-login').classList.remove('hidden');
+                document.getElementById('admin-dashboard').classList.add('hidden');
+                document.getElementById('access-denied').classList.add('hidden');
+            },
+            showDashboard() {
+                document.getElementById('admin-login').classList.add('hidden');
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                document.getElementById('access-denied').classList.add('hidden');
+            },
+            showDenied() {
+                document.getElementById('admin-login').classList.add('hidden');
+                document.getElementById('admin-dashboard').classList.add('hidden');
+                document.getElementById('access-denied').classList.remove('hidden');
+            },
+            toast(msg, isError = false) {
+                const t = document.getElementById('toast');
+                t.textContent = msg;
+                t.className = `fixed bottom-4 right-4 px-4 py-2 rounded shadow-lg transition-opacity ${isError ? 'bg-red-500' : 'bg-green-500'} text-white z-50`;
+                t.style.opacity = '1';
+                setTimeout(() => t.style.opacity = '0', 3000);
+            }
+        };
+
+        // Handle Login
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const pwd = document.getElementById('password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, pwd);
+            } catch (err) {
+                UI.toast(err.message, true);
+            }
+        });
+
+        // Handle Logout
+        document.querySelectorAll('.btn-logout').forEach(btn => {
+            btn.addEventListener('click', () => signOut(auth));
+        });
+
+        // Load Dashboard Data
+        async function loadAdminData() {
+            try {
+                // 1. Fetch Users
+                const usersRef = collection(db, `artifacts/${APP_ID}/public/data/users`);
+                const userSnapshot = await getDocs(usersRef);
+                const userTbody = document.getElementById('users-tbody');
+                userTbody.innerHTML = '';
+                document.getElementById('stat-users').textContent = userSnapshot.size;
+
+                userSnapshot.forEach(doc => {
+                    const u = doc.data();
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-white/5 hover:bg-white/5 text-sm text-gray-300';
+                    tr.innerHTML = `
+                        <td class="p-3 font-mono text-xs">${u.uid}</td>
+                        <td class="p-3">${u.email || 'N/A'}</td>
+                        <td class="p-3">${u.username || 'N/A'}</td>
+                        <td class="p-3">
+                            <span class="px-2 py-1 rounded text-xs ${u.isOnline ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}">
+                                ${u.isOnline ? 'Online' : 'Offline'}
+                            </span>
+                        </td>
+                        <td class="p-3 font-mono text-[10px] truncate max-w-xs" title="${u.publicKey || 'Missing'}">${u.publicKey ? 'Registered' : 'Missing'}</td>
+                    `;
+                    userTbody.appendChild(tr);
+                });
+
+                // 2. Fetch Conversations Metadata
+                const convRef = collection(db, `artifacts/${APP_ID}/public/data/conversations`);
+                const convSnapshot = await getDocs(convRef);
+                const convTbody = document.getElementById('conv-tbody');
+                convTbody.innerHTML = '';
+                document.getElementById('stat-convs').textContent = convSnapshot.size;
+
+                convSnapshot.forEach(doc => {
+                    const c = doc.data();
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-white/5 hover:bg-white/5 text-sm text-gray-300 cursor-pointer';
+                    const date = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString() : 'N/A';
+                    
+                    tr.innerHTML = `
+                        <td class="p-3 font-mono text-xs truncate max-w-xs" title="${doc.id}">${doc.id}</td>
+                        <td class="p-3">${date}</td>
+                        <td class="p-3">${c.disappearing ? (c.disappearing / 60000) + ' min' : 'Off'}</td>
+                        <td class="p-3 text-blue-400 text-xs">Click to view encrypted payloads</td>
+                    `;
+                    
+                    tr.addEventListener('click', () => loadMessages(doc.id));
+                    convTbody.appendChild(tr);
+                });
+
+            } catch (err) {
+                console.error(err);
+                UI.toast("Error loading data. Check Firestore rules.", true);
+            }
+        }
+
+        // Load Encrypted Messages for a specific conversation
+        async function loadMessages(convId) {
+            const msgTbody = document.getElementById('msg-tbody');
+            msgTbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-500">Loading encrypted data...</td></tr>`;
+            document.getElementById('msg-inspector-title').textContent = `Encrypted Packets: ${convId}`;
+
+            try {
+                const msgRef = collection(db, `artifacts/${APP_ID}/public/data/conversations/${convId}/messages`);
+                const msgSnapshot = await getDocs(msgRef);
+                msgTbody.innerHTML = '';
+
+                if(msgSnapshot.empty) {
+                    msgTbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-500">No messages found or all expired.</td></tr>`;
+                    return;
+                }
+
+                msgSnapshot.forEach(docSnap => {
+                    const m = docSnap.data();
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-white/5 hover:bg-white/5 text-sm text-gray-300';
+                    const date = m.timestamp ? new Date(m.timestamp.toMillis()).toLocaleString() : 'Unknown';
+                    
+                    tr.innerHTML = `
+                        <td class="p-3">${date}</td>
+                        <td class="p-3 font-mono text-xs">${m.senderUid}</td>
+                        <td class="p-3 text-xs"><span class="px-2 py-1 bg-purple-500/20 text-purple-400 rounded">${m.type || 'text'}</span></td>
+                        <td class="p-3 font-mono text-[10px] break-all text-gray-400 max-w-md h-16 overflow-y-auto block custom-scrollbar bg-black/40 rounded p-1">
+                            <strong>AES Ciphertext:</strong> ${m.ciphertext || m.encryptedBase64File || 'N/A'}<br/>
+                            <strong>IV:</strong> ${m.iv || 'N/A'}
+                        </td>
+                    `;
+                    msgTbody.appendChild(tr);
+                });
+            } catch (e) {
+                UI.toast("Failed to load messages", true);
+            }
+        }
+
+        // Auth State Listener
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                if (user.email === ADMIN_EMAIL) {
+                    document.getElementById('admin-email-display').textContent = user.email;
+                    UI.showDashboard();
+                    loadAdminData();
+                } else {
+                    // Logged in, but not the admin
+                    UI.showDenied();
+                }
+            } else {
+                UI.showLogin();
+            }
+        });
+    </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-[#0a0f1c] via-[#111827] to-[#2e1065] flex flex-col">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="opacity-0 pointer-events-none transition-opacity" style="opacity: 0;"></div>
+
+    <!-- Login View -->
+    <div id="admin-login" class="flex-1 flex items-center justify-center p-4 hidden">
+        <div class="glass p-8 rounded-2xl w-full max-w-md shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-blue-500/20 rounded-full border border-blue-500 flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                </div>
+                <h1 class="text-2xl font-bold text-white">Falconix Security Console</h1>
+                <p class="text-sm text-gray-400 mt-2">Restricted Admin Access Only</p>
+            </div>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <input type="email" id="email" required placeholder="Admin Email" class="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <input type="password" id="password" required placeholder="Password" class="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors">Authenticate</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Access Denied View -->
+    <div id="access-denied" class="flex-1 flex items-center justify-center p-4 hidden">
+        <div class="glass p-8 rounded-2xl w-full max-w-md text-center shadow-2xl border-red-500/30">
+            <svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <h1 class="text-2xl font-bold text-white mb-2">Access Denied</h1>
+            <p class="text-gray-400 mb-6">Your account does not have administrative privileges to view this console.</p>
+            <button class="btn-logout py-2 px-6 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors">Sign Out</button>
+        </div>
+    </div>
+
+    <!-- Main Dashboard View -->
+    <div id="admin-dashboard" class="flex-1 flex flex-col hidden h-screen">
+        <header class="glass px-6 py-4 flex justify-between items-center shrink-0">
+            <div class="flex items-center space-x-3">
+                <img src="https://i.ibb.co/7Nz80xdL/Falconix-Digital-Logo.png" class="w-8 h-8">
+                <h1 class="text-xl font-bold text-white tracking-wide">Server Operations</h1>
+                <span class="px-2 py-1 bg-red-500/20 text-red-400 text-[10px] uppercase font-bold rounded">E2EE Locked</span>
+            </div>
+            <div class="flex items-center space-x-4 text-sm">
+                <span class="text-gray-400" id="admin-email-display"></span>
+                <button class="btn-logout px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors border border-red-500/20">Sign Out</button>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <!-- Stats Row -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass p-6 rounded-2xl flex flex-col justify-center items-center">
+                    <p class="text-gray-400 text-xs uppercase tracking-wider mb-1">Total Registered Users</p>
+                    <p class="text-4xl font-bold text-white" id="stat-users">-</p>
+                </div>
+                <div class="glass p-6 rounded-2xl flex flex-col justify-center items-center">
+                    <p class="text-gray-400 text-xs uppercase tracking-wider mb-1">Active Conversations</p>
+                    <p class="text-4xl font-bold text-white" id="stat-convs">-</p>
+                </div>
+                <div class="glass p-6 rounded-2xl flex flex-col justify-center items-center text-center">
+                    <p class="text-green-400 text-xs uppercase tracking-wider mb-1 font-bold">Privacy Status</p>
+                    <p class="text-lg font-bold text-white">Zero-Knowledge Enforced</p>
+                    <p class="text-[10px] text-gray-500 mt-1">Admin cannot read plaintext messages.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Users Table -->
+                <div class="glass rounded-2xl overflow-hidden flex flex-col h-[400px]">
+                    <div class="p-4 border-b border-white/5 bg-black/20">
+                        <h2 class="font-bold text-white">User Directory</h2>
+                    </div>
+                    <div class="flex-1 overflow-auto custom-scrollbar p-0">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="sticky top-0 bg-gray-900/90 backdrop-blur text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3 font-semibold">UID</th>
+                                    <th class="p-3 font-semibold">Email</th>
+                                    <th class="p-3 font-semibold">Username</th>
+                                    <th class="p-3 font-semibold">Status</th>
+                                    <th class="p-3 font-semibold">RSA Key Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Conversations Table -->
+                <div class="glass rounded-2xl overflow-hidden flex flex-col h-[400px]">
+                    <div class="p-4 border-b border-white/5 bg-black/20">
+                        <h2 class="font-bold text-white">Encrypted Connections</h2>
+                    </div>
+                    <div class="flex-1 overflow-auto custom-scrollbar p-0">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="sticky top-0 bg-gray-900/90 backdrop-blur text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3 font-semibold">Conversation ID</th>
+                                    <th class="p-3 font-semibold">Last Activity</th>
+                                    <th class="p-3 font-semibold">Auto-Delete</th>
+                                    <th class="p-3 font-semibold">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="conv-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Message Inspector -->
+            <div class="glass rounded-2xl overflow-hidden flex flex-col">
+                <div class="p-4 border-b border-white/5 bg-black/20 flex items-center justify-between">
+                    <h2 class="font-bold text-white" id="msg-inspector-title">Encrypted Packets: Select a connection above</h2>
+                    <span class="text-[10px] text-gray-400 flex items-center"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg> Data is AES-256 encrypted</span>
+                </div>
+                <div class="overflow-x-auto p-0 max-h-[500px] overflow-y-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="sticky top-0 bg-gray-900/90 backdrop-blur text-xs uppercase text-gray-500">
+                            <tr>
+                                <th class="p-3 font-semibold w-40">Timestamp</th>
+                                <th class="p-3 font-semibold w-48">Sender UID</th>
+                                <th class="p-3 font-semibold w-24">Type</th>
+                                <th class="p-3 font-semibold">Raw Cryptographic Payload</th>
+                            </tr>
+                        </thead>
+                        <tbody id="msg-tbody">
+                            <tr><td colspan="4" class="p-8 text-center text-gray-500">Select a conversation from the table above to inspect traffic.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>
