@@ -776,6 +776,9 @@
                 return new Promise(async (resolve) => {
                     const list = document.getElementById('chat-message-list');
                     
+                    const previousScrollHeight = list.scrollHeight;
+                    const previousScrollTop = list.scrollTop;
+
                     if (!AppState.localKeys) {
                         resolve();
                         return; 
@@ -899,7 +902,7 @@
                         }
 
                         processedCount++;
-                        if (processedCount % 15 === 0) {
+                        if (processedCount % 15 === 0 && !AppState.isFetchingMore) {
                             await new Promise(r => setTimeout(r, 1));
                         }
                     }
@@ -959,10 +962,26 @@
                             list.style.opacity = '1';
                             resolve();
                         });
+
+                    } else if (AppState.isFetchingMore) {
+                        const heightDifference = list.scrollHeight - previousScrollHeight;
+                        list.scrollTop = previousScrollTop + heightDifference - 32;
+                        resolve();
+
                     } else {
                         const isNearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 250;
-                        if (isNearBottom || messages[messages.length - 1]?.senderUid === AppState.currentUser.uid) {
+                        
+                        if (isNearBottom || AppState.justSentMessage) {
                             list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+                            AppState.justSentMessage = false; 
+                            
+                            const fab = document.getElementById('new-message-fab');
+                            if(fab) { fab.classList.add('hidden'); fab.classList.remove('flex', 'animate-slide-up'); }
+                        } else {
+                            if (list.scrollHeight > previousScrollHeight) {
+                                const fab = document.getElementById('new-message-fab');
+                                if(fab) { fab.classList.remove('hidden'); fab.classList.add('flex', 'animate-slide-up'); }
+                            }
                         }
                         resolve();
                     }
@@ -1344,23 +1363,32 @@
                     if (list.scrollTop <= 5 && !AppState.isFetchingMore && currentMessageCount >= AppState.messageLimit) {
                         AppState.isFetchingMore = true;
                         
-                        const previousScrollHeight = list.scrollHeight;
-                        
                         const loader = document.createElement('div');
                         loader.id = 'pagination-loader';
-                        loader.className = 'w-full text-center py-2 text-xs text-gray-500 flex justify-center';
+                        loader.className = 'w-full text-center py-2 text-xs text-gray-500 flex justify-center shrink-0';
                         loader.innerHTML = '<div class="w-4 h-4 border-2 border-falconix-primary border-t-transparent rounded-full animate-spin"></div>';
                         list.prepend(loader);
+
+                        list.scrollTop += 32;
 
                         AppState.messageLimit += 50;
                         
                         DataService.startMessageListener(db, convId, AppState.messageLimit, (newMessages) => {
                             ChatService.handleMessagesSnapshot(newMessages).then(() => {
-                                document.getElementById('pagination-loader')?.remove();
-                                list.scrollTop = list.scrollHeight - previousScrollHeight;
-                                AppState.isFetchingMore = false;
+                                const l = document.getElementById('pagination-loader');
+                                if(l) l.remove();
+                                setTimeout(() => AppState.isFetchingMore = false, 50);
                             });
                         });
+                    }
+
+                    const isNearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 150;
+                    if (isNearBottom) {
+                        const fab = document.getElementById('new-message-fab');
+                        if (fab && !fab.classList.contains('hidden')) {
+                            fab.classList.add('hidden');
+                            fab.classList.remove('flex', 'animate-slide-up');
+                        }
                     }
                 };
             },
@@ -1995,6 +2023,8 @@
                 chatInput.value = ''; btnSend.disabled = true;
                 await ChatService.setTyping(db, AppState.selectedUser.uid, false);
                 
+                AppState.justSentMessage = true; 
+                
                 if (AppState.editingMsgId) await ChatService.editMessage(text, AppState.editingMsgId, AppState.selectedUser);
                 else await ChatService.sendMessage(text, AppState.selectedUser);
                 
@@ -2002,7 +2032,12 @@
             };
 
             btnSend?.addEventListener('click', handleSend);
-            
+            document.getElementById('new-message-fab')?.addEventListener('click', () => {
+                const list = document.getElementById('chat-message-list');
+                if (list) {
+                    list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+                }
+            });
             const btnMic = document.getElementById('btn-record-audio');
             let mediaRecorder; let audioChunks = []; let isRecording = false;
 
@@ -2776,7 +2811,10 @@
                     </div>
 
                     <div id="chat-message-list" class="flex-1 p-4 sm:p-6 overflow-y-auto custom-scrollbar flex flex-col space-y-4 z-20"></div>
-
+                    <button id="new-message-fab" class="absolute bottom-20 sm:bottom-24 left-1/2 transform -translate-x-1/2 bg-falconix-primary/95 backdrop-blur-md text-white px-4 py-2 rounded-full shadow-[0_4px_15px_rgba(0,163,255,0.4)] border border-blue-400/50 hidden items-center space-x-2 z-40 transition-all hover:scale-105 active:scale-95">
+                        <svg class="w-4 h-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                        <span class="text-[10px] font-bold uppercase tracking-widest">New Message</span>
+                    </button>
                     <footer class="p-2 sm:p-4 bg-gray-900 border-t border-gray-800 relative z-30 shrink-0">
                         <div id="input-action-banner" class="absolute bottom-[100%] left-0 w-full px-4 hidden z-10"></div>
                         <div class="flex items-end space-x-1.5 sm:space-x-2">
